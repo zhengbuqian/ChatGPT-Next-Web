@@ -40,11 +40,13 @@ export const DEFAULT_CONFIG = {
 
   modelConfig: {
     model: "gpt-3.5-turbo" as ModelType,
+
     temperature: 0.5,
     top_p: 1,
     max_tokens: 2000,
     presence_penalty: 0,
     frequency_penalty: 0,
+
     sendMemory: true,
     historyMessageCount: 4,
     compressMessageLengthThreshold: 1000,
