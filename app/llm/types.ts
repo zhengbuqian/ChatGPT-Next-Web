@@ -1,3 +1,5 @@
+import { NextRequest } from "next/server";
+
 export namespace LLM {
   export enum ModelType {
     Text,
@@ -44,7 +46,8 @@ export namespace LLM {
     Text,
   }
 
-  export type SettingItemMethod<T> = {
+  export type SettingItemCommon<T> = {
+    defaultValue: T;
     format?: (value: T) => string;
     valid?: (value: T) => { isValid: boolean; message: string };
   };
@@ -56,31 +59,27 @@ export namespace LLM {
           name: string;
           value: string;
         }>;
-        defaultValue: string;
-      } & SettingItemMethod<string>)
+      } & SettingItemCommon<string>)
     | ({
         type: SettingItemType.NumberRange;
         min: number;
         max: number;
         step: number;
-        defaultValue: number;
-      } & SettingItemMethod<number>)
+      } & SettingItemCommon<number>)
     | ({
         type: SettingItemType.Number;
         min: number;
         max: number;
-        defaultValue: number;
         placeholder: string;
-      } & SettingItemMethod<number>)
+      } & SettingItemCommon<number>)
     | {
         type: SettingItemType.Boolean;
         defaultValue: boolean;
       }
     | ({
         type: SettingItemType.Text;
-        defaultValue: string;
         placeholder: string;
-      } & SettingItemMethod<string>);
+      } & SettingItemCommon<string>);
 
   export enum EnvItemType {
     Text,
@@ -135,4 +134,52 @@ export namespace LLM {
     config: C;
     modelConfig: MC;
   }
+
+  export type InferConfigType<T> = T extends number
+    ? number
+    : T extends string
+    ? string
+    : T;
+
+  export type InferModelConfig<T> = T extends LLM.Descriptor<
+    infer _A,
+    infer _B,
+    infer _C,
+    infer _D,
+    infer _E
+  >
+    ? {
+        config: {
+          [K in keyof T["config"]]: InferConfigType<
+            T["config"][K]["input"]["defaultValue"]
+          >;
+        } & {
+          [K in keyof T["modelConfig"]]: InferConfigType<
+            T["modelConfig"][K]["input"]["defaultValue"]
+          >;
+        };
+        model: T["models"][number]["name"];
+        client: LLM.Client<T["models"][number]["name"]>;
+      }
+    : never;
+
+  export type InferProviderMeta<T> = T extends LLM.Descriptor<
+    infer _A,
+    infer _B,
+    infer _C,
+    infer _D,
+    infer _E
+  >
+    ? InferModelConfig<T> & {
+        provider: {
+          fromStore(
+            store: LLM.Store<InferModelConfig<T>["config"]>,
+          ): InferModelConfig<T>["client"];
+          fromServer(request: NextRequest): InferModelConfig<T>["client"];
+          createClient(
+            config: InferModelConfig<T>["config"],
+          ): InferModelConfig<T>["client"];
+        };
+      }
+    : never;
 }

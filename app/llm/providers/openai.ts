@@ -1,7 +1,7 @@
 import Locale from "../../locales";
 import { OPENAI_URL } from "@/app/api/common";
-import { type NextRequest } from "next/server";
 import { LLM } from "../types";
+import { defineProvider } from "..";
 
 export const OpenAIDescriptor = {
   name: "OpenAI" as const,
@@ -50,6 +50,11 @@ export const OpenAIDescriptor = {
         type: LLM.SettingItemType.Text,
         defaultValue: "",
         placeholder: Locale.Settings.Token.Placeholder,
+      },
+      env: {
+        type: LLM.EnvItemType.Text,
+        name: "OPENAI_API_KEY",
+        defaultValue: "",
       },
     }),
   },
@@ -118,101 +123,31 @@ export const OpenAIDescriptor = {
   },
 };
 
-type InferConfigType<T> = T extends number
-  ? number
-  : T extends string
-  ? string
-  : T;
-type InferModelConfig<T> = T extends LLM.Descriptor<
-  infer _A,
-  infer _B,
-  infer _C,
-  infer _D,
-  infer _E
->
-  ? {
-      config: {
-        [K in keyof T["config"]]: InferConfigType<
-          T["config"][K]["input"]["defaultValue"]
-        >;
-      } & {
-        [K in keyof T["modelConfig"]]: InferConfigType<
-          T["modelConfig"][K]["input"]["defaultValue"]
-        >;
+export const OpenAIProvider = defineProvider(
+  OpenAIDescriptor,
+  (descriptor) => ({
+    fromStore(store) {
+      const config = store.getConfig(descriptor);
+      return this.createClient(config);
+    },
+
+    fromServer(request) {
+      const config = request.headers as any;
+      return this.createClient(config);
+    },
+
+    createClient(config) {
+      return {
+        async text(params) {},
+        async chat(params) {},
+        async chatStream(params) {},
+        async embedding(chunks) {
+          return [];
+        },
+        async models() {
+          return descriptor.models.map((m) => m.name);
+        },
       };
-      model: T["models"][number]["name"];
-      client: LLM.Client<T["models"][number]["name"]>;
-    }
-  : never;
-type InferDescriptorMeta<T> = T extends LLM.Descriptor<
-  infer _A,
-  infer _B,
-  infer _C,
-  infer _D,
-  infer _E
->
-  ? InferModelConfig<T> & {
-      provider: {
-        descriptor: T;
-        fromStore(
-          store: LLM.Store<InferModelConfig<T>["config"]>,
-        ): InferModelConfig<T>["client"];
-        fromServer(request: NextRequest): InferModelConfig<T>["client"];
-        createClient(
-          config: InferModelConfig<T>["config"],
-        ): InferModelConfig<T>["client"];
-      };
-    }
-  : never;
-
-type OpenAIDescriptorMeta = InferDescriptorMeta<typeof OpenAIDescriptor>;
-
-const OpenAIProvider: OpenAIDescriptorMeta["provider"] = {
-  descriptor: OpenAIDescriptor,
-  fromStore(store) {
-    const descriptor = this.descriptor;
-    const config = store.getConfig(descriptor);
-    return this.createClient(config);
-  },
-
-  fromServer(request) {
-    const config = request.headers as any;
-    return this.createClient(config);
-  },
-
-  createClient(config) {
-    const descriptor = this.descriptor;
-    return {
-      async text(params) {},
-      async chat(params) {},
-      async chatStream(params) {},
-      async embedding(chunks) {
-        return [];
-      },
-      async models() {
-        return descriptor.models.map((m) => m.name);
-      },
-    };
-  },
-};
-
-const Descriptors = [OpenAIDescriptor] as const;
-
-const Providers = [OpenAIProvider];
-export type AllModelName =
-  (typeof Descriptors)[number]["models"][number]["name"];
-
-type ProviderName = (typeof Providers)[number]["descriptor"]["name"];
-
-// TODO: 将 descriptor 和 provider 整合到 defineProvider 函数中
-function defineProvider<T>(
-  descriptor: T,
-  provider: InferDescriptorMeta<T>["provider"],
-) {
-  return {
-    descriptor,
-    provider,
-  };
-}
-
-export function createProvider(name: ProviderName) {}
+    },
+  }),
+);
