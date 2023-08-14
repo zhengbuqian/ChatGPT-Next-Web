@@ -5,6 +5,15 @@ import { defineProvider } from "..";
 
 export const OpenAIDescriptor = {
   name: "OpenAI" as const,
+
+  paths: {
+    chat: "v1/chat/completions",
+    listModels: "v1/models",
+  },
+
+  defaultModel: "gpt-3.5-turbo",
+  summarizeModel: "gpt-3.5-turbo",
+
   models: [
     LLM.createModel({
       name: "gpt-3.5-turbo",
@@ -22,9 +31,6 @@ export const OpenAIDescriptor = {
       type: LLM.ModelType.Chat,
     } as const),
   ],
-
-  defaultModel: "gpt-3.5-turbo",
-  summarizeModel: "gpt-3.5-turbo",
 
   config: {
     endpoint: LLM.createConfigItem({
@@ -54,6 +60,21 @@ export const OpenAIDescriptor = {
       env: {
         type: LLM.EnvItemType.Text,
         name: "OPENAI_API_KEY",
+        defaultValue: "",
+      },
+    }),
+    orgId: LLM.createConfigItem({
+      key: "orgId",
+      name: Locale.Settings.Token.Title,
+      desc: Locale.Settings.Token.SubTitle,
+      input: {
+        type: LLM.SettingItemType.Text,
+        defaultValue: "",
+        placeholder: Locale.Settings.Token.Placeholder,
+      },
+      env: {
+        type: LLM.EnvItemType.Text,
+        name: "OPENAI_ORG_ID",
         defaultValue: "",
       },
     }),
@@ -126,21 +147,69 @@ export const OpenAIDescriptor = {
 export const OpenAIProvider = defineProvider(
   OpenAIDescriptor,
   (descriptor) => ({
-    fromStore(store) {
+    createClient(store, fetchOptions: RequestInit) {
       const config = store.getConfig(descriptor);
-      return this.createClient(config);
-    },
+      const options: RequestInit = {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+          ...(!!config.orgId && {
+            "OpenAI-Organization": config.orgId,
+          }),
+        },
+      };
 
-    fromServer(request) {
-      const config = request.headers as any;
-      return this.createClient(config);
-    },
-
-    createClient(config) {
       return {
-        async text(params) {},
-        async chat(params) {},
+        getFullPath(path: keyof typeof descriptor.paths) {
+          let url = config.endpoint;
+          if (url.endsWith("/")) {
+            url = url.slice(0, url.length - 1);
+          }
+          return [url, descriptor.paths[path]].join("/");
+        },
+
+        extractMessage(res: any) {
+          return res.choices?.at(0)?.message?.content ?? "";
+        },
+
+        async chat(params) {
+          const messages = params.contexts.concat(params.messages).map((v) => ({
+            role: v.role,
+            content: v.content,
+          }));
+
+          const requestPayload = {
+            messages,
+            stream: false,
+            model: params.model,
+            temperature: config.temperature,
+            presence_penalty: config.presence_penalty,
+            frequency_penalty: config.frequency_penalty,
+            top_p: config.top_p,
+          };
+
+          console.log("[Request] openai payload: ", requestPayload);
+
+          const controller = new AbortController();
+          params.onController?.(controller);
+
+          try {
+            const response = await fetch(this.getFullPath("chat"), {
+              ...options,
+              method: "post",
+              body: JSON.stringify(requestPayload),
+            });
+
+            const resJson = await response.json();
+            const message = this.extractMessage(resJson);
+            params.onFinish(message);
+          } catch (e) {
+            console.log("[Request] failed to make a chat request", e);
+            params.onError(e as Error);
+          }
+        },
         async chatStream(params) {},
+        async text(params) {},
         async embedding(chunks) {
           return [];
         },

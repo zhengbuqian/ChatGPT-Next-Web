@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { ChatMessage } from "../store";
 
 export namespace LLM {
   export enum ModelType {
@@ -16,12 +16,13 @@ export namespace LLM {
   }
 
   type ChatParams<T> = {
-    contexts: [];
-    messages: [];
+    contexts: ChatMessage[];
+    messages: ChatMessage[];
     model: T;
     onUpdate: (message: string) => Promise<void>;
     onFinish: (message: string) => Promise<void>;
     onError: (error: Error) => Promise<void>;
+    onController?: (controller: AbortController) => void;
   };
 
   export interface Client<T = string> {
@@ -172,12 +173,9 @@ export namespace LLM {
   >
     ? InferModelConfig<T> & {
         provider: {
-          fromStore(
-            store: LLM.Store<InferModelConfig<T>["config"]>,
-          ): InferModelConfig<T>["client"];
-          fromServer(request: NextRequest): InferModelConfig<T>["client"];
           createClient(
-            config: InferModelConfig<T>["config"],
+            store: Store<InferModelConfig<T>["config"]>,
+            fetchOptions: RequestInit,
           ): InferModelConfig<T>["client"];
         };
       }
